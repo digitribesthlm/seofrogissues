@@ -196,6 +196,15 @@ export default function Dashboard({ domain, scanDate }) {
     return 'text-red-600';
   };
 
+  const getScoreComparison = (currentIssues, previousIssues) => {
+    const currentScore = calculateTotalSEOScore(currentIssues);
+    const previousScore = calculateTotalSEOScore(previousIssues);
+    const percentChange = ((currentScore - previousScore) / previousScore * 100).toFixed(1);
+    const arrow = currentScore > previousScore ? '↑' : '↓';
+    
+    return `${arrow} ${Math.abs(percentChange)}%`;
+  };
+
   return (
     <DashboardLayout>
       <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
@@ -220,6 +229,11 @@ export default function Dashboard({ domain, scanDate }) {
                 {calculateTotalSEOScore(data.issues)}
               </p>
               <p className="ml-1 text-sm text-gray-500">/100</p>
+              {comparison?.data?.previousIssues && (
+                <span className="ml-2 text-sm">
+                  {getScoreComparison(data.issues, comparison.data.previousIssues)}
+                </span>
+              )}
             </div>
             <div className="mt-2">
               <div className="w-full bg-gray-200 rounded-full h-2">

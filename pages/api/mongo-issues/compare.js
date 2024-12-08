@@ -1,5 +1,6 @@
 import { connectToDatabase } from '../../../utils/mongodb';
 import { verifyAuth } from '../../../utils/auth';
+import { calculateTotalSEOScore } from '../../../utils/seoUtils';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -30,6 +31,15 @@ export default async function handler(req, res) {
     console.log('Comparison dates:', {
       newest: new Date(newestReport.scan_date).toISOString(),
       previous: new Date(previousReport.scan_date).toISOString()
+    });
+
+    const newestSEOScore = calculateTotalSEOScore(newestReport.all_issues);
+    const previousSEOScore = calculateTotalSEOScore(previousReport.all_issues);
+
+    console.log('SEO Scores:', {
+      newest: newestSEOScore,
+      previous: previousSEOScore,
+      difference: newestSEOScore - previousSEOScore
     });
 
     // Use these for comparison
@@ -126,7 +136,7 @@ export default async function handler(req, res) {
             isPositiveChange ? 'improved' : 'worse',
           indicator: !previousIssue ? '🆕' :
             change === 0 ? '⚪' :
-            isPositiveChange ? '🟢' : '🔴'
+            isPositiveChange ? '🟢' : '��'
         };
       }),
       summary: {
@@ -149,7 +159,13 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       success: true,
-      data: comparison
+      data: {
+        previousIssues: previousReport.all_issues,
+        dates: comparison.dates,
+        metrics: comparison.metrics,
+        issueChanges: comparison.issueChanges,
+        summary: comparison.summary
+      }
     });
   } catch (error) {
     console.error('Comparison error:', error);

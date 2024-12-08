@@ -101,19 +101,19 @@ export default function ComparisonMetrics({ comparison }) {
         <div className="mt-2 space-y-2">
           <div className="flex justify-between items-center">
             <span className="text-sm text-green-600">Improved</span>
-            <span className="text-sm font-semibold">{comparison.summary.improved}</span>
+            <span className="text-sm font-semibold">{comparison?.data?.summary?.improved || 0}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-sm text-red-600">Worse</span>
-            <span className="text-sm font-semibold">{comparison.summary.worse}</span>
+            <span className="text-sm font-semibold">{comparison?.data?.summary?.worse || 0}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-sm text-gray-600">New Issues</span>
-            <span className="text-sm font-semibold">{comparison.summary.new}</span>
+            <span className="text-sm font-semibold">{comparison?.data?.summary?.new || 0}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-sm text-green-600">Resolved</span>
-            <span className="text-sm font-semibold">{comparison.summary.resolved}</span>
+            <span className="text-sm font-semibold">{comparison?.data?.summary?.resolved || 0}</span>
           </div>
         </div>
       </div>
