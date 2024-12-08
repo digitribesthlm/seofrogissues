@@ -5,10 +5,35 @@ import IssueCharts from '../components/IssueCharts';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../components/DashboardLayout';
 import { verifyAuth } from '../utils/auth';
+import ComparisonMetrics from '../components/ComparisonMetrics';
 
-const IssueRow = ({ issue, onClick, showGroup }) => {
+const IssueRow = ({ issue, onClick, showGroup, comparison }) => {
   const seoScore = calculateSEOScore(issue);
-  
+  const issueChange = comparison?.issueChanges.find(
+    change => change.issueName === issue['Issue Name']
+  );
+
+  // Determine if trend should be reversed based on issue type
+  const getTrendDisplay = (issueChange) => {
+    if (!issueChange) return null;
+
+    const isOpportunity = issue['Issue Type'] === 'Opportunity';
+    const { trend, percentageChange } = issueChange;
+
+    return {
+      color: trend === 'improved' ? 'text-green-600' :
+             trend === 'worse' ? 'text-red-600' :
+             'text-gray-600',
+      icon: trend === 'new' ? '🆕' :
+            trend === 'unchanged' ? '⚪' :
+            trend === 'improved' ? (isOpportunity ? '🔴' : '🟢') :
+            isOpportunity ? '🟢' : '🔴',
+      percentage: percentageChange
+    };
+  };
+
+  const trendDisplay = getTrendDisplay(issueChange);
+
   return (
     <tr onClick={onClick} className="hover:bg-gray-50 cursor-pointer">
       {showGroup && (
@@ -43,6 +68,16 @@ const IssueRow = ({ issue, onClick, showGroup }) => {
           {seoScore}
         </span>
       </td>
+      <td className="px-6 py-4">
+        {trendDisplay && (
+          <div className="flex items-center space-x-2">
+            <span>{trendDisplay.icon}</span>
+            <span className={`text-sm ${trendDisplay.color}`}>
+              {trendDisplay.percentage}%
+            </span>
+          </div>
+        )}
+      </td>
     </tr>
   );
 };
@@ -51,6 +86,7 @@ export default function Dashboard({ domain, scanDate }) {
   const router = useRouter();
   const [selectedIssue, setSelectedIssue] = useState(null);
   const [data, setData] = useState({ issues: [], metadata: {} });
+  const [comparison, setComparison] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sortConfig, setSortConfig] = useState({
     key: null,
@@ -102,7 +138,8 @@ export default function Dashboard({ domain, scanDate }) {
     { key: 'Issue Priority', label: 'Priority' },
     { key: 'URLs', label: 'URLs' },
     { key: '% of Total', label: '% of Total' },
-    { key: 'SEO Score', label: 'SEO Score' }
+    { key: 'SEO Score', label: 'SEO Score' },
+    { key: 'Trend', label: 'Change' }
   ];
 
   const getCategories = () => {
@@ -124,6 +161,13 @@ export default function Dashboard({ domain, scanDate }) {
           return;
         }
         setData(result);
+
+        const comparisonRes = await fetch('/api/mongo-issues/compare');
+        const comparisonData = await comparisonRes.json();
+        if (comparisonData.success) {
+          setComparison(comparisonData.data);
+        }
+
         setIsLoading(false);
       } catch (error) {
         console.error('Failed to load data:', error);
@@ -165,48 +209,24 @@ export default function Dashboard({ domain, scanDate }) {
             </p>
           </div>
           
-          <div className="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2 lg:grid-cols-4">
-            {/* Total SEO Score Card */}
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="text-gray-500 text-sm font-medium">Overall SEO Score</h3>
-              <div className="mt-2 flex items-baseline">
-                <p className={`text-3xl font-bold ${getScoreColor(calculateTotalSEOScore(data.issues))}`}>
-                  {calculateTotalSEOScore(data.issues)}
-                </p>
-                <p className="ml-1 text-sm text-gray-500">/100</p>
-              </div>
-              <div className="mt-2">
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full ${getScoreColor(calculateTotalSEOScore(data.issues)).replace('text-', 'bg-')}`}
-                    style={{ width: `${calculateTotalSEOScore(data.issues)}%` }}
-                  />
-                </div>
-              </div>
+          {/* Comparison Metrics */}
+          {comparison && <ComparisonMetrics comparison={comparison} />}
+
+          {/* SEO Score Card */}
+          <div className="bg-white p-6 rounded-lg shadow mb-8">
+            <h3 className="text-gray-500 text-sm font-medium">Overall SEO Score</h3>
+            <div className="mt-2 flex items-baseline">
+              <p className={`text-3xl font-bold ${getScoreColor(calculateTotalSEOScore(data.issues))}`}>
+                {calculateTotalSEOScore(data.issues)}
+              </p>
+              <p className="ml-1 text-sm text-gray-500">/100</p>
             </div>
-            
-            {/* Total Issues Card */}
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="text-gray-500 text-sm font-medium">Total Issues</h3>
-              <p className="mt-2 text-3xl font-bold text-gray-900">{data.metadata.totalIssues}</p>
-            </div>
-            
-            {/* Total URLs Card */}
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="text-gray-500 text-sm font-medium">Total Affected URLs</h3>
-              <p className="mt-2 text-3xl font-bold text-gray-900">{data.metadata.totalAffectedUrls}</p>
-            </div>
-            
-            {/* Issues by Priority */}
-            <div className="bg-white p-6 rounded-lg shadow">
-              <h3 className="text-gray-500 text-sm font-medium">Issues by Type</h3>
-              <div className="mt-2 space-y-2">
-                {Object.entries(data.metadata.issuesByType).map(([type, count]) => (
-                  <div key={type} className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">{type}</span>
-                    <span className="text-sm font-semibold">{count}</span>
-                  </div>
-                ))}
+            <div className="mt-2">
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div
+                  className={`h-2 rounded-full ${getScoreColor(calculateTotalSEOScore(data.issues)).replace('text-', 'bg-')}`}
+                  style={{ width: `${calculateTotalSEOScore(data.issues)}%` }}
+                />
               </div>
             </div>
           </div>
@@ -265,6 +285,7 @@ export default function Dashboard({ domain, scanDate }) {
                     issue={issue} 
                     onClick={() => setSelectedIssue(issue)}
                     showGroup={true}
+                    comparison={comparison}
                   />
                 ))}
               </tbody>
@@ -340,20 +361,27 @@ export async function getServerSideProps(context) {
     const { connectToDatabase } = require('../utils/mongodb');
     const { db } = await connectToDatabase();
 
-    const seoReport = await db.collection('frog_seoReports')
-      .findOne(
-        { clientId: auth.clientId },
-        { sort: { scan_date: -1 } }
-      );
+    // Debug: Log all reports to check dates
+    const allReports = await db.collection('frog_seoReports')
+      .find({ clientId: auth.clientId })
+      .sort({ scan_date: -1 })
+      .toArray();
+    
+    console.log('All reports:', allReports.map(r => ({
+      date: r.scan_date,
+      domain: r.domain_name
+    })));
 
-    if (!seoReport) {
+    const latestReport = allReports[0];  // Get the very first one (newest)
+
+    if (!latestReport) {
       throw new Error('No SEO report found');
     }
 
     return {
       props: {
-        domain: seoReport.domain_name,
-        scanDate: new Date(seoReport.scan_date).toLocaleDateString('en-US', {
+        domain: latestReport.domain_name,
+        scanDate: new Date(latestReport.scan_date).toLocaleDateString('en-US', {
           year: 'numeric',
           month: 'long',
           day: 'numeric'
