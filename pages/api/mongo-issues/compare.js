@@ -14,36 +14,38 @@ export default async function handler(req, res) {
 
     const { db } = await connectToDatabase();
 
-    // Get the two most recent reports for comparison
-    const reports = await db.collection('frog_seoReports')
+    // Get all reports
+    const allReports = await db.collection('frog_seoReports')
       .find({ clientId: auth.clientId })
-      .sort({ scan_date: -1 })
-      .limit(2)
       .toArray();
 
-    if (reports.length < 2) {
-      return res.status(404).json({ 
-        error: 'Not enough reports for comparison',
-        reportsFound: reports.length
-      });
-    }
+    // Sort reports by date explicitly
+    const sortedReports = allReports.sort((a, b) => 
+      new Date(b.scan_date) - new Date(a.scan_date)
+    );
 
-    const [newerReport, olderReport] = reports;
+    // Take the two most recent
+    const [newestReport, previousReport] = sortedReports;
 
-    // Add date information to the comparison
+    console.log('Comparison dates:', {
+      newest: new Date(newestReport.scan_date).toISOString(),
+      previous: new Date(previousReport.scan_date).toISOString()
+    });
+
+    // Use these for comparison
     const comparison = {
       dates: {
-        current: newerReport.scan_date,
-        previous: olderReport.scan_date,
-        daysBetween: Math.floor((new Date(newerReport.scan_date) - new Date(olderReport.scan_date)) / (1000 * 60 * 60 * 24)),
-        formattedCurrent: new Date(newerReport.scan_date).toLocaleDateString('en-US', {
+        current: newestReport.scan_date,
+        previous: previousReport.scan_date,
+        daysBetween: Math.floor((new Date(newestReport.scan_date) - new Date(previousReport.scan_date)) / (1000 * 60 * 60 * 24)),
+        formattedCurrent: new Date(newestReport.scan_date).toLocaleDateString('en-US', {
           year: 'numeric',
           month: 'long',
           day: 'numeric',
           hour: '2-digit',
           minute: '2-digit'
         }),
-        formattedPrevious: new Date(olderReport.scan_date).toLocaleDateString('en-US', {
+        formattedPrevious: new Date(previousReport.scan_date).toLocaleDateString('en-US', {
           year: 'numeric',
           month: 'long',
           day: 'numeric',
@@ -53,45 +55,45 @@ export default async function handler(req, res) {
       },
       metrics: {
         totalIssues: {
-          current: newerReport.metadata.totalIssues,
-          previous: olderReport.metadata.totalIssues,
-          change: newerReport.metadata.totalIssues - olderReport.metadata.totalIssues,
-          percentageChange: ((newerReport.metadata.totalIssues - olderReport.metadata.totalIssues) / olderReport.metadata.totalIssues * 100).toFixed(1),
-          trend: newerReport.metadata.totalIssues < olderReport.metadata.totalIssues ? 'improved' : 'worse'
+          current: newestReport.metadata.totalIssues,
+          previous: previousReport.metadata.totalIssues,
+          change: newestReport.metadata.totalIssues - previousReport.metadata.totalIssues,
+          percentageChange: ((newestReport.metadata.totalIssues - previousReport.metadata.totalIssues) / previousReport.metadata.totalIssues * 100).toFixed(1),
+          trend: newestReport.metadata.totalIssues < previousReport.metadata.totalIssues ? 'improved' : 'worse'
         },
         totalUrls: {
-          current: newerReport.metadata.totalUrls,
-          previous: olderReport.metadata.totalUrls,
-          change: newerReport.metadata.totalUrls - olderReport.metadata.totalUrls,
-          percentageChange: ((newerReport.metadata.totalUrls - olderReport.metadata.totalUrls) / olderReport.metadata.totalUrls * 100).toFixed(1),
-          trend: newerReport.metadata.totalUrls < olderReport.metadata.totalUrls ? 'improved' : 'worse'
+          current: newestReport.metadata.totalUrls,
+          previous: previousReport.metadata.totalUrls,
+          change: newestReport.metadata.totalUrls - previousReport.metadata.totalUrls,
+          percentageChange: ((newestReport.metadata.totalUrls - previousReport.metadata.totalUrls) / previousReport.metadata.totalUrls * 100).toFixed(1),
+          trend: newestReport.metadata.totalUrls < previousReport.metadata.totalUrls ? 'improved' : 'worse'
         },
         byType: {
           Issue: {
-            current: newerReport.metadata.urlsByIssueType.Issue || 0,
-            previous: olderReport.metadata.urlsByIssueType.Issue || 0,
-            change: (newerReport.metadata.urlsByIssueType.Issue || 0) - (olderReport.metadata.urlsByIssueType.Issue || 0),
-            percentageChange: (((newerReport.metadata.urlsByIssueType.Issue || 0) - (olderReport.metadata.urlsByIssueType.Issue || 0)) / (olderReport.metadata.urlsByIssueType.Issue || 1) * 100).toFixed(1),
-            trend: (newerReport.metadata.urlsByIssueType.Issue || 0) < (olderReport.metadata.urlsByIssueType.Issue || 0) ? 'improved' : 'worse'
+            current: newestReport.metadata.urlsByIssueType.Issue || 0,
+            previous: previousReport.metadata.urlsByIssueType.Issue || 0,
+            change: (newestReport.metadata.urlsByIssueType.Issue || 0) - (previousReport.metadata.urlsByIssueType.Issue || 0),
+            percentageChange: (((newestReport.metadata.urlsByIssueType.Issue || 0) - (previousReport.metadata.urlsByIssueType.Issue || 0)) / (previousReport.metadata.urlsByIssueType.Issue || 1) * 100).toFixed(1),
+            trend: (newestReport.metadata.urlsByIssueType.Issue || 0) < (previousReport.metadata.urlsByIssueType.Issue || 0) ? 'improved' : 'worse'
           },
           Warning: {
-            current: newerReport.metadata.urlsByIssueType.Warning || 0,
-            previous: olderReport.metadata.urlsByIssueType.Warning || 0,
-            change: (newerReport.metadata.urlsByIssueType.Warning || 0) - (olderReport.metadata.urlsByIssueType.Warning || 0),
-            percentageChange: (((newerReport.metadata.urlsByIssueType.Warning || 0) - (olderReport.metadata.urlsByIssueType.Warning || 0)) / (olderReport.metadata.urlsByIssueType.Warning || 1) * 100).toFixed(1),
-            trend: (newerReport.metadata.urlsByIssueType.Warning || 0) < (olderReport.metadata.urlsByIssueType.Warning || 0) ? 'improved' : 'worse'
+            current: newestReport.metadata.urlsByIssueType.Warning || 0,
+            previous: previousReport.metadata.urlsByIssueType.Warning || 0,
+            change: (newestReport.metadata.urlsByIssueType.Warning || 0) - (previousReport.metadata.urlsByIssueType.Warning || 0),
+            percentageChange: (((newestReport.metadata.urlsByIssueType.Warning || 0) - (previousReport.metadata.urlsByIssueType.Warning || 0)) / (previousReport.metadata.urlsByIssueType.Warning || 1) * 100).toFixed(1),
+            trend: (newestReport.metadata.urlsByIssueType.Warning || 0) < (previousReport.metadata.urlsByIssueType.Warning || 0) ? 'improved' : 'worse'
           },
           Opportunity: {
-            current: newerReport.metadata.urlsByIssueType.Opportunity || 0,
-            previous: olderReport.metadata.urlsByIssueType.Opportunity || 0,
-            change: (newerReport.metadata.urlsByIssueType.Opportunity || 0) - (olderReport.metadata.urlsByIssueType.Opportunity || 0),
-            percentageChange: (((newerReport.metadata.urlsByIssueType.Opportunity || 0) - (olderReport.metadata.urlsByIssueType.Opportunity || 0)) / (olderReport.metadata.urlsByIssueType.Opportunity || 1) * 100).toFixed(1),
-            trend: (newerReport.metadata.urlsByIssueType.Opportunity || 0) < (olderReport.metadata.urlsByIssueType.Opportunity || 0) ? 'improved' : 'worse'
+            current: newestReport.metadata.urlsByIssueType.Opportunity || 0,
+            previous: previousReport.metadata.urlsByIssueType.Opportunity || 0,
+            change: (newestReport.metadata.urlsByIssueType.Opportunity || 0) - (previousReport.metadata.urlsByIssueType.Opportunity || 0),
+            percentageChange: (((newestReport.metadata.urlsByIssueType.Opportunity || 0) - (previousReport.metadata.urlsByIssueType.Opportunity || 0)) / (previousReport.metadata.urlsByIssueType.Opportunity || 1) * 100).toFixed(1),
+            trend: (newestReport.metadata.urlsByIssueType.Opportunity || 0) < (previousReport.metadata.urlsByIssueType.Opportunity || 0) ? 'improved' : 'worse'
           }
         }
       },
-      issueChanges: newerReport.all_issues.map(currentIssue => {
-        const previousIssue = olderReport.all_issues.find(
+      issueChanges: newestReport.all_issues.map(currentIssue => {
+        const previousIssue = previousReport.all_issues.find(
           pi => pi.issueName === currentIssue.issueName
         );
 
@@ -141,8 +143,8 @@ export default async function handler(req, res) {
       comparison.summary[issue.trend]++;
     });
 
-    comparison.summary.resolved = olderReport.all_issues.filter(prevIssue => 
-      !newerReport.all_issues.find(curr => curr.issueName === prevIssue.issueName)
+    comparison.summary.resolved = previousReport.all_issues.filter(prevIssue => 
+      !newestReport.all_issues.find(curr => curr.issueName === prevIssue.issueName)
     ).length;
 
     return res.status(200).json({

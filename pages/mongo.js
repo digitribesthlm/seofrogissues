@@ -361,27 +361,25 @@ export async function getServerSideProps(context) {
     const { connectToDatabase } = require('../utils/mongodb');
     const { db } = await connectToDatabase();
 
-    // Debug: Log all reports to check dates
+    // Get all reports and explicitly find the newest
     const allReports = await db.collection('frog_seoReports')
       .find({ clientId: auth.clientId })
-      .sort({ scan_date: -1 })
       .toArray();
-    
-    console.log('All reports:', allReports.map(r => ({
-      date: r.scan_date,
-      domain: r.domain_name
-    })));
 
-    const latestReport = allReports[0];  // Get the very first one (newest)
+    // Explicitly find the newest report by date comparison
+    const newestReport = allReports.reduce((newest, report) => {
+      return new Date(report.scan_date) > new Date(newest.scan_date) ? report : newest;
+    }, allReports[0]);
 
-    if (!latestReport) {
-      throw new Error('No SEO report found');
-    }
+    console.log('Header date:', {
+      allDates: allReports.map(r => r.scan_date),
+      selectedDate: newestReport.scan_date
+    });
 
     return {
       props: {
-        domain: latestReport.domain_name,
-        scanDate: new Date(latestReport.scan_date).toLocaleDateString('en-US', {
+        domain: newestReport.domain_name,
+        scanDate: new Date(newestReport.scan_date).toLocaleDateString('en-US', {
           year: 'numeric',
           month: 'long',
           day: 'numeric'

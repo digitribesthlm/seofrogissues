@@ -1,27 +1,29 @@
 export async function parseData() {
   try {
-    const response = await fetch('/api/mongo-issues');
-    
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    const res = await fetch('/api/mongo-issues');
+    const data = await res.json();
+
+    if (!data.success) {
+      throw new Error(data.error || 'Failed to load data');
     }
 
-    const { data, metadata } = await response.json();
-    
-    if (!Array.isArray(data)) {
-      throw new Error('Invalid data format received');
-    }
-
-    return { issues: data, metadata };
-  } catch (error) {
-    console.error('Error fetching data:', error);
-    return { 
-      issues: [], 
-      metadata: { 
-        totalIssues: 0, 
-        issuesByType: {}, 
-        totalAffectedUrls: 0 
-      } 
+    // Transform the data from the API response
+    return {
+      issues: data.data.map(issue => ({
+        'Issue Name': issue.issueName,
+        'Issue Type': issue.issueType,
+        'Issue Priority': issue.issuePriority,
+        'URLs': issue.urls,
+        '% of Total': issue.percentageOfTotal
+      })),
+      metadata: {
+        totalIssues: data.metadata.totalIssues,
+        totalAffectedUrls: data.metadata.totalUrls,
+        issuesByType: data.metadata.urlsByIssueType
+      }
     };
+  } catch (error) {
+    console.error('Error parsing data:', error);
+    throw error;
   }
 } 

@@ -10,45 +10,25 @@ export default async function handler(req, res) {
 
     const { db } = await connectToDatabase();
 
-    const seoReport = await db.collection('frog_seoReports')
-      .findOne(
-        { clientId: auth.clientId },
-        { sort: { scan_date: -1 } }
-      );
+    // Get all reports and sort by date
+    const allReports = await db.collection('frog_seoReports')
+      .find({ clientId: auth.clientId })
+      .toArray();
 
-    if (!seoReport) {
-      throw new Error('No SEO report found for this client');
-    }
+    // Sort to get the newest report
+    const sortedReports = allReports.sort((a, b) => 
+      new Date(b.scan_date) - new Date(a.scan_date)
+    );
 
-    const issueTemplates = await db.collection('frog_issueTemplates')
-      .find({}).toArray();
+    const latestReport = sortedReports[0];  // Get Dec 8 report
 
-    const templateMap = issueTemplates.reduce((acc, template) => {
-      acc[template.issueName] = template;
-      return acc;
-    }, {});
-
-    const enrichedIssues = seoReport.all_issues.map(issue => ({
-      'Issue Name': issue.issueName,
-      'Issue Type': issue.issueType,
-      'Issue Priority': issue.issuePriority,
-      'URLs': issue.urls,
-      '% of Total': issue.percentageOfTotal,
-      'Description': templateMap[issue.issueName]?.description || '',
-      'How To Fix': templateMap[issue.issueName]?.howToFix || ''
-    }));
-
-    const metadata = {
-      totalIssues: seoReport.metadata.totalIssues,
-      issuesByType: seoReport.metadata.urlsByIssueType,
-      totalAffectedUrls: seoReport.metadata.totalUrls
-    };
+    console.log('Using report from:', new Date(latestReport.scan_date).toISOString());
 
     return res.status(200).json({ 
-      data: enrichedIssues,
+      data: latestReport.all_issues,
       success: true,
-      metadata,
-      domain: seoReport.domain_name
+      metadata: latestReport.metadata,
+      domain: latestReport.domain_name
     });
   } catch (error) {
     console.error('API Error:', error);
