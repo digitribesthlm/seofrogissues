@@ -196,15 +196,6 @@ export default function Dashboard({ domain, scanDate }) {
     return 'text-red-600';
   };
 
-  const getScoreComparison = (currentIssues, previousIssues) => {
-    const currentScore = calculateTotalSEOScore(currentIssues);
-    const previousScore = calculateTotalSEOScore(previousIssues);
-    const percentChange = ((currentScore - previousScore) / previousScore * 100).toFixed(1);
-    const arrow = currentScore > previousScore ? '↑' : '↓';
-    
-    return `${arrow} ${Math.abs(percentChange)}%`;
-  };
-
   return (
     <DashboardLayout>
       <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
@@ -229,9 +220,10 @@ export default function Dashboard({ domain, scanDate }) {
                 {calculateTotalSEOScore(data.issues)}
               </p>
               <p className="ml-1 text-sm text-gray-500">/100</p>
-              {comparison?.data?.previousIssues && (
-                <span className="ml-2 text-sm">
-                  {getScoreComparison(data.issues, comparison.data.previousIssues)}
+              {comparison?.metrics?.seoScore && (
+                <span className={`ml-2 text-sm ${comparison.metrics.seoScore.trend === 'improved' ? 'text-green-600' : 'text-red-600'}`}>
+                  {comparison.metrics.seoScore.trend === 'improved' ? '↑' : '↓'} 
+                  {Math.abs(comparison.metrics.seoScore.percentageChange)}%
                 </span>
               )}
             </div>
@@ -359,41 +351,49 @@ export default function Dashboard({ domain, scanDate }) {
 }
 
 export async function getServerSideProps(context) {
-  const { req } = context;
-  const auth = await verifyAuth(req);
-
-  if (!auth.isAuthenticated) {
-    return {
-      redirect: {
-        destination: '/login',
-        permanent: false,
-      },
-    };
-  }
-
   try {
+    // 1. Check auth
+    const auth = await verifyAuth(context.req);
+    if (!auth?.isAuthenticated || !auth?.clientId) {
+      return { redirect: { destination: '/login', permanent: false } };
+    }
+
+    // 2. Connect to DB
     const { connectToDatabase } = require('../utils/mongodb');
     const { db } = await connectToDatabase();
 
-    // Get all reports and explicitly find the newest
-    const allReports = await db.collection('frog_seoReports')
-      .find({ clientId: auth.clientId })
-      .toArray();
+    // 3. Get latest report
+    const report = await db.collection('frog_seoReports')
+      .findOne(
+        { clientId: auth.clientId },
+        { 
+          sort: { scan_date: -1 },
+          projection: { 
+            domain_name: 1, 
+            scan_date: 1,
+            all_issues: 1,  // Include all issues
+            _id: 0 
+          }
+        }
+      );
 
-    // Explicitly find the newest report by date comparison
-    const newestReport = allReports.reduce((newest, report) => {
-      return new Date(report.scan_date) > new Date(newest.scan_date) ? report : newest;
-    }, allReports[0]);
+    console.log('Latest report date:', new Date(report.scan_date).toISOString());  // Debug log
 
-    console.log('Header date:', {
-      allDates: allReports.map(r => r.scan_date),
-      selectedDate: newestReport.scan_date
-    });
+    // 4. Handle no report case
+    if (!report) {
+      return {
+        props: {
+          domain: 'No Data',
+          scanDate: 'Never'
+        }
+      };
+    }
 
+    // 5. Return serializable data
     return {
       props: {
-        domain: newestReport.domain_name,
-        scanDate: new Date(newestReport.scan_date).toLocaleDateString('en-US', {
+        domain: report.domain_name || 'unknown',
+        scanDate: new Date(report.scan_date).toLocaleDateString('en-US', {
           year: 'numeric',
           month: 'long',
           day: 'numeric'
@@ -401,12 +401,12 @@ export async function getServerSideProps(context) {
       }
     };
   } catch (error) {
-    console.error('getServerSideProps error:', error);
+    console.error('Server error:', error);
     return {
-      redirect: {
-        destination: '/login',
-        permanent: false,
-      },
+      props: {
+        domain: 'Error',
+        scanDate: 'Error loading data'
+      }
     };
   }
 } 

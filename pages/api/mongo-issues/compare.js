@@ -33,13 +33,25 @@ export default async function handler(req, res) {
       previous: new Date(previousReport.scan_date).toISOString()
     });
 
-    const newestSEOScore = calculateTotalSEOScore(newestReport.all_issues);
-    const previousSEOScore = calculateTotalSEOScore(previousReport.all_issues);
+    // Transform MongoDB data to match the format expected by calculateTotalSEOScore
+    const transformIssues = (mongoIssues) => {
+      return mongoIssues.map(issue => ({
+        'Issue Name': issue.issueName,
+        'Issue Type': issue.issueType,
+        'Issue Priority': issue.issuePriority,
+        'URLs': issue.urls,
+        '% of Total': issue.percentageOfTotal
+      }));
+    };
 
-    console.log('SEO Scores:', {
-      newest: newestSEOScore,
-      previous: previousSEOScore,
-      difference: newestSEOScore - previousSEOScore
+    // Then use it in the calculation
+    const newestScore = calculateTotalSEOScore(transformIssues(newestReport.all_issues));
+    const previousScore = calculateTotalSEOScore(transformIssues(previousReport.all_issues));
+
+    console.log('Real SEO Scores:', {
+      newest: newestScore,
+      previous: previousScore,
+      difference: newestScore - previousScore
     });
 
     // Use these for comparison
@@ -135,7 +147,7 @@ export default async function handler(req, res) {
             change === 0 ? 'unchanged' :
             isPositiveChange ? 'improved' : 'worse',
           indicator: !previousIssue ? '🆕' :
-            change === 0 ? '⚪' :
+            change === 0 ? '��' :
             isPositiveChange ? '🟢' : '��'
         };
       }),
@@ -157,12 +169,31 @@ export default async function handler(req, res) {
       !newestReport.all_issues.find(curr => curr.issueName === prevIssue.issueName)
     ).length;
 
+    // Add debug log before sending response
+    console.log('Sending comparison data:', {
+      seoScore: {
+        current: newestScore,
+        previous: previousScore,
+        change: newestScore - previousScore,
+        percentageChange: ((newestScore - previousScore) / previousScore * 100).toFixed(1)
+      }
+    });
+
     return res.status(200).json({
       success: true,
       data: {
         previousIssues: previousReport.all_issues,
         dates: comparison.dates,
-        metrics: comparison.metrics,
+        metrics: {
+          ...comparison.metrics,
+          seoScore: {
+            current: newestScore,
+            previous: previousScore,
+            change: newestScore - previousScore,
+            percentageChange: ((newestScore - previousScore) / previousScore * 100).toFixed(1),
+            trend: newestScore > previousScore ? 'improved' : 'worse'
+          }
+        },
         issueChanges: comparison.issueChanges,
         summary: comparison.summary
       }
