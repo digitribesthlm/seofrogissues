@@ -25,7 +25,10 @@ export default function IssueCharts({ data }) {
   // Prepare data for category distribution chart
   const categoryData = Object.entries(data.issues.reduce((acc, issue) => {
     const group = getIssueGroup(issue['Issue Name']);
-    const urlCount = parseInt(issue['URLs'].replace(/[^0-9]/g, '')) || 0;
+    // Handle URLs that might be numbers or strings
+    const urlCount = typeof issue['URLs'] === 'string'
+      ? parseInt(issue['URLs'].replace(/[^0-9]/g, ''))
+      : parseInt(issue['URLs']) || 0;
     acc[group] = (acc[group] || 0) + urlCount;
     return acc;
   }, {})).map(([name, value]) => ({ name, value }));

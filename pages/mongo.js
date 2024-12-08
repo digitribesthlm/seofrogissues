@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { parseData } from '../utils/dataParser';
+import { parseData } from '../utils/mongoParser';
 import { calculateSEOScore, groupIssues, getIssueGroup, ISSUE_GROUPS, calculateTotalSEOScore } from '../utils/seoUtils';
 import IssueCharts from '../components/IssueCharts';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../components/DashboardLayout';
+import { verifyAuth } from '../utils/auth';
 
 const IssueRow = ({ issue, onClick, showGroup }) => {
   const seoScore = calculateSEOScore(issue);
@@ -46,49 +47,7 @@ const IssueRow = ({ issue, onClick, showGroup }) => {
   );
 };
 
-export async function getServerSideProps(context) {
-  const { req } = context;
-  const token = req.cookies.token;
-
-  if (!token) {
-    return {
-      redirect: {
-        destination: '/login',
-        permanent: false,
-      },
-    };
-  }
-
-  try {
-    const { connectToDatabase } = require('../utils/mongodb');
-    const { verifyToken } = require('../utils/auth');
-    
-    const userData = await verifyToken(token);
-    const { db } = await connectToDatabase();
-
-    const seoReport = await db.collection('frog_seoReports')
-      .findOne(
-        { clientId: userData.clientId },
-        { sort: { scan_date: -1 } }
-      );
-
-    return {
-      props: {
-        domain: seoReport?.domain_name || process.env.DOMAIN || 'Default Domain'
-      }
-    };
-  } catch (error) {
-    console.error('getServerSideProps error:', error);
-    return {
-      redirect: {
-        destination: '/login',
-        permanent: false,
-      },
-    };
-  }
-}
-
-export default function Dashboard({ domain }) {
+export default function MongoDashboard({ domain }) {
   const router = useRouter();
   const [selectedIssue, setSelectedIssue] = useState(null);
   const [data, setData] = useState({ issues: [], metadata: {} });
@@ -105,7 +64,6 @@ export default function Dashboard({ domain }) {
       let aValue = a[key];
       let bValue = b[key];
 
-      // Handle special cases
       if (key === 'URLs' || key === '% of Total') {
         aValue = parseFloat(aValue.replace(/[^0-9.]/g, ''));
         bValue = parseFloat(bValue.replace(/[^0-9.]/g, ''));
@@ -120,7 +78,6 @@ export default function Dashboard({ domain }) {
     });
   };
 
-  // Handle column header click
   const handleSort = (key) => {
     let direction = 'asc';
     if (sortConfig.key === key && sortConfig.direction === 'asc') {
@@ -134,13 +91,11 @@ export default function Dashboard({ domain }) {
     }));
   };
 
-  // Get sort direction indicator
   const getSortIndicator = (key) => {
     if (sortConfig.key !== key) return '↕';
     return sortConfig.direction === 'asc' ? '↑' : '↓';
   };
 
-  // Column definitions
   const columns = [
     { key: 'Issue Name', label: 'Issue Name' },
     { key: 'Issue Type', label: 'Type' },
@@ -150,13 +105,11 @@ export default function Dashboard({ domain }) {
     { key: 'SEO Score', label: 'SEO Score' }
   ];
 
-  // Add this function to get unique categories
   const getCategories = () => {
     const categories = ['All', ...Object.keys(ISSUE_GROUPS)];
     return categories.sort();
   };
 
-  // Add this function to filter issues
   const getFilteredIssues = (issues) => {
     if (activeFilter === 'All') return issues;
     return issues.filter(issue => getIssueGroup(issue['Issue Name']) === activeFilter);
@@ -184,9 +137,11 @@ export default function Dashboard({ domain }) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
-      </div>
+      <DashboardLayout>
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-xl">Loading...</div>
+        </div>
+      </DashboardLayout>
     );
   }
 
@@ -202,7 +157,7 @@ export default function Dashboard({ domain }) {
       <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <h1 className="text-3xl font-bold text-gray-900 mb-8">
-            SEO Issues Dashboard - {domain}
+            MongoDB SEO Dashboard - {domain}
           </h1>
           
           <div className="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2 lg:grid-cols-4">
@@ -276,7 +231,7 @@ export default function Dashboard({ domain }) {
             </div>
           </div>
 
-          {/* Modified Table */}
+          {/* Issues Table */}
           <div className="bg-white shadow rounded-lg overflow-hidden">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
@@ -362,3 +317,42 @@ export default function Dashboard({ domain }) {
     </DashboardLayout>
   );
 }
+
+export async function getServerSideProps(context) {
+  const { req } = context;
+  const auth = await verifyAuth(req);
+
+  if (!auth.isAuthenticated) {
+    return {
+      redirect: {
+        destination: '/login',
+        permanent: false,
+      },
+    };
+  }
+
+  try {
+    const { connectToDatabase } = require('../utils/mongodb');
+    const { db } = await connectToDatabase();
+
+    const seoReport = await db.collection('frog_seoReports')
+      .findOne(
+        { clientId: auth.clientId },
+        { sort: { scan_date: -1 } }
+      );
+
+    return {
+      props: {
+        domain: seoReport?.domain_name || process.env.DOMAIN || 'Default Domain'
+      }
+    };
+  } catch (error) {
+    console.error('getServerSideProps error:', error);
+    return {
+      redirect: {
+        destination: '/login',
+        permanent: false,
+      },
+    };
+  }
+} 

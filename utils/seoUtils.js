@@ -102,7 +102,11 @@ export const ISSUE_GROUPS = {
 export function calculateSEOScore(issue) {
   const priorityScore = PRIORITY_WEIGHTS[issue['Issue Priority']] || 0;
   const typeScore = TYPE_WEIGHTS[issue['Issue Type']] || 0;
-  const urlsAffected = parseInt(issue['URLs'].replace(/[^0-9]/g, '')) || 0;
+  
+  // Handle both string and number types for URLs
+  const urlsAffected = typeof issue['URLs'] === 'string'
+    ? parseInt(issue['URLs'].replace(/[^0-9]/g, ''))
+    : parseInt(issue['URLs']) || 0;
   
   // Calculate weighted score
   const score = (priorityScore * typeScore * Math.log10(urlsAffected + 1)) / 100;
@@ -174,7 +178,12 @@ export function calculateTotalSEOScore(issues) {
   issues.forEach(issue => {
     const priorityWeight = WEIGHT_FACTORS.Priority[issue['Issue Priority']] || -1;
     const typeWeight = WEIGHT_FACTORS.Type[issue['Issue Type']] || 1;
-    const urlCount = parseInt(issue['URLs'].replace(/[^0-9]/g, '')) || 0;
+    
+    // Handle both string and number types for URLs
+    const urlCount = typeof issue['URLs'] === 'string' 
+      ? parseInt(issue['URLs'].replace(/[^0-9]/g, '')) 
+      : parseInt(issue['URLs']) || 0;
+      
     const urlFactor = Math.log10(urlCount + 1) / 2; // Logarithmic scaling for URL count
 
     totalDeductions += Math.abs(priorityWeight * typeWeight * urlFactor);
