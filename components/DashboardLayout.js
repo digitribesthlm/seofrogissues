@@ -30,16 +30,6 @@ export default function DashboardLayout({ children }) {
               </Link>
               <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
                 <Link 
-                  href="/"
-                  className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                    router.pathname === '/' 
-                      ? 'border-blue-500 text-gray-900'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                  }`}
-                >
-                  CSV Dashboard
-                </Link>
-                <Link 
                   href="/mongo"
                   className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
                     router.pathname === '/mongo'
@@ -47,7 +37,17 @@ export default function DashboardLayout({ children }) {
                       : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
                   }`}
                 >
-                  MongoDB Dashboard
+                  Dashboard
+                </Link>
+                <Link 
+                  href="/upload"
+                  className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
+                    router.pathname === '/upload'
+                      ? 'border-blue-500 text-gray-900'
+                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                  }`}
+                >
+                  Upload Report
                 </Link>
               </div>
             </div>

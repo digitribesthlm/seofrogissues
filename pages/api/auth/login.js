@@ -1,6 +1,7 @@
 // pages/api/auth/login.js
 import { connectToDatabase } from '../../../utils/mongodb';
 import { serialize } from 'cookie';
+import { useRouter } from 'next/router';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -52,6 +53,11 @@ export default async function handler(req, res) {
         role: user.role || 'user',
       },
     });
+
+    const router = useRouter();
+    if (res.ok) {
+      router.push('/');
+    }
   } catch (error) {
     res.status(500).json({ message: 'Internal server error' });
   }

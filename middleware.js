@@ -11,8 +11,7 @@ export async function middleware(req) {
 
   // List of API paths that need token
   const apiPaths = [
-    '/api/mongo-issues',
-    '/api/issues'
+    '/api/mongo-issues'
   ];
 
   // List of protected pages

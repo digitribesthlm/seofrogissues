@@ -47,7 +47,7 @@ const IssueRow = ({ issue, onClick, showGroup }) => {
   );
 };
 
-export default function MongoDashboard({ domain }) {
+export default function Dashboard({ domain, scanDate }) {
   const router = useRouter();
   const [selectedIssue, setSelectedIssue] = useState(null);
   const [data, setData] = useState({ issues: [], metadata: {} });
@@ -156,9 +156,14 @@ export default function MongoDashboard({ domain }) {
     <DashboardLayout>
       <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <h1 className="text-3xl font-bold text-gray-900 mb-8">
-            MongoDB SEO Dashboard - {domain}
-          </h1>
+          <div className="flex flex-col sm:flex-row justify-between items-baseline mb-8">
+            <h1 className="text-3xl font-bold text-gray-900">
+              SEO Dashboard - {domain}
+            </h1>
+            <p className="text-gray-500 mt-2 sm:mt-0">
+              Last scan: {scanDate}
+            </p>
+          </div>
           
           <div className="grid grid-cols-1 gap-6 mb-8 sm:grid-cols-2 lg:grid-cols-4">
             {/* Total SEO Score Card */}
@@ -341,9 +346,18 @@ export async function getServerSideProps(context) {
         { sort: { scan_date: -1 } }
       );
 
+    if (!seoReport) {
+      throw new Error('No SEO report found');
+    }
+
     return {
       props: {
-        domain: seoReport?.domain_name || process.env.DOMAIN || 'Default Domain'
+        domain: seoReport.domain_name,
+        scanDate: new Date(seoReport.scan_date).toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+        })
       }
     };
   } catch (error) {
