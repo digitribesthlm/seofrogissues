@@ -21,12 +21,13 @@ export default async function handler(req, res) {
     }
 
     const { db } = await connectToDatabase();
-    const records = Array.isArray(req.body) ? req.body : JSON.parse(req.body);
+    const { domain } = req.body;  // Extract domain from form data
+    const records = Array.isArray(req.body.records) ? req.body.records : JSON.parse(req.body.records);
 
     // Create SEO report document
     const seoReport = {
       clientId: auth.clientId,
-      domain_name: records[0]?.Domain || 'unknown',
+      domain_name: domain || 'unknown',  // Use the domain from form data
       scan_date: new Date(),
       all_issues: records.map(record => ({
         issueName: record['Issue Name'],
