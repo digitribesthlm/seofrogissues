@@ -17,13 +17,13 @@ export async function parseData() {
         '% of Total': issue.percentageOfTotal
       })),
       metadata: {
-        totalIssues: data.metadata.totalIssues,
-        totalAffectedUrls: data.metadata.totalUrls,
-        issuesByType: data.metadata.urlsByIssueType
+        totalIssues: data.metadata.totalIssues || 0,
+        totalAffectedUrls: data.metadata.totalUrls || 0,
+        issuesByType: data.metadata.urlsByIssueType || {}
       }
     };
   } catch (error) {
     console.error('Error parsing data:', error);
     throw error;
   }
-} 
+}

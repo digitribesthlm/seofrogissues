@@ -4,6 +4,9 @@ export async function parseData() {
     
     // Check if response is ok
     if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Please log in to access this data');
+      }
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     

@@ -352,17 +352,14 @@ export default function Dashboard({ domain, scanDate }) {
 
 export async function getServerSideProps(context) {
   try {
-    // 1. Check auth
     const auth = await verifyAuth(context.req);
     if (!auth?.isAuthenticated || !auth?.clientId) {
       return { redirect: { destination: '/login', permanent: false } };
     }
 
-    // 2. Connect to DB
     const { connectToDatabase } = require('../utils/mongodb');
     const { db } = await connectToDatabase();
 
-    // 3. Get latest report
     const report = await db.collection('frog_seoReports')
       .findOne(
         { clientId: auth.clientId },
@@ -371,15 +368,12 @@ export async function getServerSideProps(context) {
           projection: { 
             domain_name: 1, 
             scan_date: 1,
-            all_issues: 1,  // Include all issues
+            all_issues: 1,
             _id: 0 
           }
         }
       );
 
-    console.log('Latest report date:', new Date(report.scan_date).toISOString());  // Debug log
-
-    // 4. Handle no report case
     if (!report) {
       return {
         props: {
@@ -389,15 +383,16 @@ export async function getServerSideProps(context) {
       };
     }
 
-    // 5. Return serializable data
+    const formattedDate = new Date(report.scan_date).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
     return {
       props: {
         domain: report.domain_name || 'unknown',
-        scanDate: new Date(report.scan_date).toLocaleDateString('en-US', {
-          year: 'numeric',
-          month: 'long',
-          day: 'numeric'
-        })
+        scanDate: formattedDate
       }
     };
   } catch (error) {

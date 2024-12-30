@@ -47,38 +47,27 @@ const IssueRow = ({ issue, onClick, showGroup }) => {
 };
 
 export async function getServerSideProps(context) {
-  const { req } = context;
-  const token = req.cookies.token;
-
-  if (!token) {
-    return {
-      redirect: {
-        destination: '/login',
-        permanent: false,
-      },
-    };
-  }
-
+  const { verifyAuth } = require('../utils/auth');
+  
   try {
-    const { connectToDatabase } = require('../utils/mongodb');
-    const { verifyToken } = require('../utils/auth');
+    const auth = await verifyAuth(context.req);
     
-    const userData = await verifyToken(token);
-    const { db } = await connectToDatabase();
-
-    const seoReport = await db.collection('frog_seoReports')
-      .findOne(
-        { clientId: userData.clientId },
-        { sort: { scan_date: -1 } }
-      );
+    if (!auth.isAuthenticated) {
+      return {
+        redirect: {
+          destination: '/login',
+          permanent: false,
+        },
+      };
+    }
 
     return {
       props: {
-        domain: seoReport?.domain_name || process.env.DOMAIN || 'Default Domain'
-      }
+        domain: process.env.DOMAIN || 'example.com',
+      },
     };
   } catch (error) {
-    console.error('getServerSideProps error:', error);
+    console.error('Error in getServerSideProps:', error);
     return {
       redirect: {
         destination: '/login',
@@ -90,102 +79,45 @@ export async function getServerSideProps(context) {
 
 export default function Dashboard({ domain }) {
   const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [data, setData] = useState([]);
+  const [metadata, setMetadata] = useState(null);
   const [selectedIssue, setSelectedIssue] = useState(null);
-  const [data, setData] = useState({ issues: [], metadata: {} });
-  const [isLoading, setIsLoading] = useState(true);
-  const [sortConfig, setSortConfig] = useState({
-    key: null,
-    direction: 'asc'
-  });
-  const [activeFilter, setActiveFilter] = useState('All');
-
-  // Sorting function
-  const sortIssues = (issues, key, direction) => {
-    return [...issues].sort((a, b) => {
-      let aValue = a[key];
-      let bValue = b[key];
-
-      // Handle special cases
-      if (key === 'URLs' || key === '% of Total') {
-        aValue = parseFloat(aValue.replace(/[^0-9.]/g, ''));
-        bValue = parseFloat(bValue.replace(/[^0-9.]/g, ''));
-      } else if (key === 'SEO Score') {
-        aValue = calculateSEOScore(a);
-        bValue = calculateSEOScore(b);
-      }
-
-      if (aValue < bValue) return direction === 'asc' ? -1 : 1;
-      if (aValue > bValue) return direction === 'asc' ? 1 : -1;
-      return 0;
-    });
-  };
-
-  // Handle column header click
-  const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
-    
-    setData(prevData => ({
-      ...prevData,
-      issues: sortIssues(prevData.issues, key, direction)
-    }));
-  };
-
-  // Get sort direction indicator
-  const getSortIndicator = (key) => {
-    if (sortConfig.key !== key) return '↕';
-    return sortConfig.direction === 'asc' ? '↑' : '↓';
-  };
-
-  // Column definitions
-  const columns = [
-    { key: 'Issue Name', label: 'Issue Name' },
-    { key: 'Issue Type', label: 'Type' },
-    { key: 'Issue Priority', label: 'Priority' },
-    { key: 'URLs', label: 'URLs' },
-    { key: '% of Total', label: '% of Total' },
-    { key: 'SEO Score', label: 'SEO Score' }
-  ];
-
-  // Add this function to get unique categories
-  const getCategories = () => {
-    const categories = ['All', ...Object.keys(ISSUE_GROUPS)];
-    return categories.sort();
-  };
-
-  // Add this function to filter issues
-  const getFilteredIssues = (issues) => {
-    if (activeFilter === 'All') return issues;
-    return issues.filter(issue => getIssueGroup(issue['Issue Name']) === activeFilter);
-  };
+  const [groupedData, setGroupedData] = useState({});
 
   useEffect(() => {
     async function loadData() {
       try {
-        const result = await parseData();
-        if (result.error === 'Not authenticated') {
-          router.push('/login');
-          return;
-        }
-        setData(result);
-        setIsLoading(false);
-      } catch (error) {
-        console.error('Failed to load data:', error);
-        if (error.message.includes('authentication')) {
+        const { issues, metadata } = await parseData();
+        setData(issues);
+        setMetadata(metadata);
+        setGroupedData(groupIssues(issues));
+      } catch (err) {
+        setError(err.message);
+        if (err.message.includes('Please log in')) {
           router.push('/login');
         }
+      } finally {
+        setLoading(false);
       }
     }
+
     loadData();
   }, [router]);
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-xl">Loading...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-xl">{error}</div>
       </div>
     );
   }
@@ -210,16 +142,16 @@ export default function Dashboard({ domain }) {
             <div className="bg-white p-6 rounded-lg shadow">
               <h3 className="text-gray-500 text-sm font-medium">Overall SEO Score</h3>
               <div className="mt-2 flex items-baseline">
-                <p className={`text-3xl font-bold ${getScoreColor(calculateTotalSEOScore(data.issues))}`}>
-                  {calculateTotalSEOScore(data.issues)}
+                <p className={`text-3xl font-bold ${getScoreColor(calculateTotalSEOScore(data))}`}>
+                  {calculateTotalSEOScore(data)}
                 </p>
                 <p className="ml-1 text-sm text-gray-500">/100</p>
               </div>
               <div className="mt-2">
                 <div className="w-full bg-gray-200 rounded-full h-2">
                   <div
-                    className={`h-2 rounded-full ${getScoreColor(calculateTotalSEOScore(data.issues)).replace('text-', 'bg-')}`}
-                    style={{ width: `${calculateTotalSEOScore(data.issues)}%` }}
+                    className={`h-2 rounded-full ${getScoreColor(calculateTotalSEOScore(data)).replace('text-', 'bg-')}`}
+                    style={{ width: `${calculateTotalSEOScore(data)}%` }}
                   />
                 </div>
               </div>
@@ -228,20 +160,20 @@ export default function Dashboard({ domain }) {
             {/* Total Issues Card */}
             <div className="bg-white p-6 rounded-lg shadow">
               <h3 className="text-gray-500 text-sm font-medium">Total Issues</h3>
-              <p className="mt-2 text-3xl font-bold text-gray-900">{data.metadata.totalIssues}</p>
+              <p className="mt-2 text-3xl font-bold text-gray-900">{metadata.totalIssues}</p>
             </div>
             
             {/* Total URLs Card */}
             <div className="bg-white p-6 rounded-lg shadow">
               <h3 className="text-gray-500 text-sm font-medium">Total Affected URLs</h3>
-              <p className="mt-2 text-3xl font-bold text-gray-900">{data.metadata.totalAffectedUrls}</p>
+              <p className="mt-2 text-3xl font-bold text-gray-900">{metadata.totalAffectedUrls}</p>
             </div>
             
             {/* Issues by Priority */}
             <div className="bg-white p-6 rounded-lg shadow">
               <h3 className="text-gray-500 text-sm font-medium">Issues by Type</h3>
               <div className="mt-2 space-y-2">
-                {Object.entries(data.metadata.issuesByType).map(([type, count]) => (
+                {metadata?.issuesByType && Object.entries(metadata.issuesByType).map(([type, count]) => (
                   <div key={type} className="flex justify-between items-center">
                     <span className="text-sm text-gray-600">{type}</span>
                     <span className="text-sm font-semibold">{count}</span>
@@ -251,16 +183,16 @@ export default function Dashboard({ domain }) {
             </div>
           </div>
 
-          <IssueCharts data={data} />
+          <IssueCharts data={{ issues: data, metadata: metadata }} />
 
           <div className="mb-4 space-y-4">
             <div className="flex flex-wrap gap-2">
-              {getCategories().map(category => (
+              {Object.keys(ISSUE_GROUPS).map(category => (
                 <button
                   key={category}
-                  onClick={() => setActiveFilter(category)}
+                  onClick={() => setSelectedIssue(null)}
                   className={`px-3 py-1 rounded-full text-sm font-medium transition-colors
-                    ${activeFilter === category
+                    ${category === 'All'
                       ? 'bg-blue-100 text-blue-800 border-2 border-blue-300'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border-2 border-transparent'
                     }`}
@@ -268,7 +200,7 @@ export default function Dashboard({ domain }) {
                   {category}
                   {category !== 'All' && (
                     <span className="ml-2 text-xs">
-                      ({data.issues.filter(issue => getIssueGroup(issue['Issue Name']) === category).length})
+                      ({data.filter(issue => getIssueGroup(issue['Issue Name']) === category).length})
                     </span>
                   )}
                 </button>
@@ -284,22 +216,28 @@ export default function Dashboard({ domain }) {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Group
                   </th>
-                  {columns.map(column => (
-                    <th
-                      key={column.key}
-                      onClick={() => handleSort(column.key)}
-                      className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                    >
-                      <div className="flex items-center space-x-1">
-                        <span>{column.label}</span>
-                        <span className="text-gray-400">{getSortIndicator(column.key)}</span>
-                      </div>
-                    </th>
-                  ))}
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Issue Name
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Type
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Priority
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    URLs
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    % of Total
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    SEO Score
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {getFilteredIssues(data.issues).map((issue, index) => (
+                {data.map((issue, index) => (
                   <IssueRow 
                     key={index} 
                     issue={issue} 
