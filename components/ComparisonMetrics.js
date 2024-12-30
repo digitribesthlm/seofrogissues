@@ -65,7 +65,7 @@ export default function ComparisonMetrics({ comparison }) {
         </div>
       </div>
 
-      {/* Issues by Type with Comparison */}
+      {/* Issues by Type Card with Comparison */}
       <div className="bg-white p-6 rounded-lg shadow">
         <div className="text-sm text-gray-500 mb-4">
           Comparing:
@@ -76,20 +76,25 @@ export default function ComparisonMetrics({ comparison }) {
         <h3 className="text-gray-500 text-sm font-medium">Issues by Type</h3>
         <div className="mt-2 space-y-2">
           {Object.entries(comparison.metrics.byType).map(([type, data]) => (
-            <div key={type} className="flex justify-between items-center">
-              <span className="text-sm text-gray-600">{type}</span>
+            <div key={type} className="flex items-center justify-between">
+              <span className="text-sm text-gray-500">{type}</span>
               <div className="flex items-center">
-                <span className="text-sm font-semibold mr-2">{data.current}</span>
-                <span className={`text-xs ${getTrendColor(data.trend)}`}>
-                  {getTrendIcon(data.trend)} {data.percentageChange}%
-                </span>
+                <span className="text-sm font-medium mr-2">{data.current}</span>
+                <div className={`flex items-center ${getTrendColor(data.trend)}`}>
+                  <span className="text-sm mr-1">
+                    {getTrendIcon(data.trend)}
+                  </span>
+                  <span className="text-xs">
+                    {data.percentageChange}%
+                  </span>
+                </div>
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Summary Card */}
+      {/* Changes Summary Card */}
       <div className="bg-white p-6 rounded-lg shadow">
         <div className="text-sm text-gray-500 mb-4">
           Comparing:
@@ -97,26 +102,26 @@ export default function ComparisonMetrics({ comparison }) {
           <span className="mx-2">vs</span>
           <span className="font-medium">{comparison.dates.formattedPrevious}</span>
         </div>
-        <h3 className="text-gray-500 text-sm font-medium">Changes Summary</h3>
-        <div className="mt-2 space-y-2">
+        <h3 className="text-gray-500 text-sm font-medium mb-4">Changes Summary</h3>
+        <div className="space-y-3">
           <div className="flex justify-between items-center">
             <span className="text-sm text-green-600">Improved</span>
-            <span className="text-sm font-semibold">{comparison?.data?.summary?.improved || 0}</span>
+            <span className="text-sm font-medium">{comparison.changes.improved}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-sm text-red-600">Worse</span>
-            <span className="text-sm font-semibold">{comparison?.data?.summary?.worse || 0}</span>
+            <span className="text-sm font-medium">{comparison.changes.worse}</span>
           </div>
           <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-600">New Issues</span>
-            <span className="text-sm font-semibold">{comparison?.data?.summary?.new || 0}</span>
+            <span className="text-sm text-blue-600">New Issues</span>
+            <span className="text-sm font-medium">{comparison.changes.new}</span>
           </div>
           <div className="flex justify-between items-center">
             <span className="text-sm text-green-600">Resolved</span>
-            <span className="text-sm font-semibold">{comparison?.data?.summary?.resolved || 0}</span>
+            <span className="text-sm font-medium">{comparison.changes.resolved}</span>
           </div>
         </div>
       </div>
     </div>
   );
-} 
+}

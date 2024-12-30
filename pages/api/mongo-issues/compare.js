@@ -13,20 +13,30 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
+    const { domain } = req.query;
     const { db } = await connectToDatabase();
 
-    // Get all reports
+    // Build query
+    const query = { clientId: auth.clientId };
+    if (domain) {
+      query.domain_name = domain;
+    }
+
+    // Get all reports for this domain
     const allReports = await db.collection('frog_seoReports')
-      .find({ clientId: auth.clientId })
+      .find(query)
+      .sort({ scan_date: -1 })
       .toArray();
 
-    // Sort reports by date explicitly
-    const sortedReports = allReports.sort((a, b) => 
-      new Date(b.scan_date) - new Date(a.scan_date)
-    );
+    if (allReports.length < 2) {
+      return res.status(404).json({ 
+        error: 'Not enough reports for comparison',
+        success: false 
+      });
+    }
 
     // Take the two most recent
-    const [newestReport, previousReport] = sortedReports;
+    const [newestReport, previousReport] = allReports;
 
     console.log('Comparison dates:', {
       newest: new Date(newestReport.scan_date).toISOString(),
@@ -179,23 +189,56 @@ export default async function handler(req, res) {
       }
     });
 
+    // Calculate issue changes
+    const newIssues = newestReport.all_issues.filter(newIssue => 
+      !previousReport.all_issues.some(oldIssue => oldIssue.issueName === newIssue.issueName)
+    ).length;
+
+    const resolvedIssues = previousReport.all_issues.filter(oldIssue => 
+      !newestReport.all_issues.some(newIssue => newIssue.issueName === oldIssue.issueName)
+    ).length;
+
+    const changedIssues = newestReport.all_issues.map(currentIssue => {
+      const previousIssue = previousReport.all_issues.find(
+        pi => pi.issueName === currentIssue.issueName
+      );
+
+      if (!previousIssue) return null;
+
+      const currentUrls = parseInt(currentIssue.urls);
+      const previousUrls = parseInt(previousIssue.urls);
+      const change = currentUrls - previousUrls;
+
+      return {
+        name: currentIssue.issueName,
+        type: currentIssue.issueType,
+        change: change,
+        improved: change < 0 // Less URLs means improvement for issues
+      };
+    }).filter(Boolean);
+
+    const improvedCount = changedIssues.filter(issue => issue.improved).length;
+    const worseCount = changedIssues.filter(issue => !issue.improved).length;
+
+    const changes = {
+      improved: improvedCount,
+      worse: worseCount,
+      new: newIssues,
+      resolved: resolvedIssues
+    };
+
     return res.status(200).json({
       success: true,
       data: {
-        previousIssues: previousReport.all_issues,
-        dates: comparison.dates,
-        metrics: {
-          ...comparison.metrics,
-          seoScore: {
-            current: newestScore,
-            previous: previousScore,
-            change: newestScore - previousScore,
-            percentageChange: ((newestScore - previousScore) / previousScore * 100).toFixed(1),
-            trend: newestScore > previousScore ? 'improved' : 'worse'
-          }
+        seoScore: {
+          current: newestScore,
+          previous: previousScore,
+          change: (newestScore - previousScore).toFixed(1)
         },
-        issueChanges: comparison.issueChanges,
-        summary: comparison.summary
+        dates: comparison.dates,
+        metrics: comparison.metrics,
+        changes: changes,
+        issueChanges: comparison.issueChanges
       }
     });
   } catch (error) {

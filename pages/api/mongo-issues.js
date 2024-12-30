@@ -8,8 +8,8 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    const { db } = await connectToDatabase();
     const { domain } = req.query;
+    const { db } = await connectToDatabase();
 
     // Build query
     const query = { clientId: auth.clientId };
@@ -20,10 +20,11 @@ export default async function handler(req, res) {
     // Get all reports and sort by date
     const allReports = await db.collection('frog_seoReports')
       .find(query)
+      .sort({ scan_date: -1 })
       .toArray();
 
     if (allReports.length === 0) {
-      return res.status(404).json({
+      return res.status(404).json({ 
         error: 'No reports found',
         success: false,
         data: [],
@@ -35,12 +36,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // Sort to get the newest report
-    const sortedReports = allReports.sort((a, b) => 
-      new Date(b.scan_date) - new Date(a.scan_date)
-    );
-
-    const latestReport = sortedReports[0];
+    const latestReport = allReports[0];
 
     console.log('Using report from:', new Date(latestReport.scan_date).toISOString());
 
