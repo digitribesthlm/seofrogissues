@@ -1,5 +1,5 @@
-import fs from 'fs/promises';
-import path from 'path';
+import { connectToDatabase } from '../../utils/mongodb';
+import { verifyAuth } from '../../utils/auth';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -7,25 +7,23 @@ export default async function handler(req, res) {
   }
 
   try {
-    const dataDir = path.join(process.cwd(), 'data');
-    const files = await fs.readdir(dataDir);
-    
-    // Read all JSON files and extract unique domains
-    const domains = new Set();
-    
-    for (const file of files) {
-      if (file.endsWith('.json')) {
-        const content = await fs.readFile(path.join(dataDir, file), 'utf8');
-        const data = JSON.parse(content);
-        if (data.domain) {
-          domains.add(data.domain);
-        }
-      }
+    const auth = await verifyAuth(req);
+    if (!auth.isAuthenticated) {
+      return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    res.status(200).json({ domains: Array.from(domains) });
+    const { db } = await connectToDatabase();
+    
+    // Just get unique domain names
+    const domains = await db.collection('frog_seoReports')
+      .distinct('domain_name', { clientId: auth.clientId });
+
+    // Sort alphabetically and filter out any null/undefined
+    const sortedDomains = domains.filter(Boolean).sort();
+    
+    res.status(200).json({ domains: sortedDomains });
   } catch (error) {
     console.error('Error getting domains:', error);
     res.status(500).json({ error: 'Error getting domains' });
   }
-} 
+}

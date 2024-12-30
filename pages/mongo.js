@@ -88,11 +88,63 @@ export default function Dashboard({ domain, scanDate }) {
   const [data, setData] = useState({ issues: [], metadata: {} });
   const [comparison, setComparison] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [domains, setDomains] = useState([]);
+  const [selectedDomain, setSelectedDomain] = useState(domain);
   const [sortConfig, setSortConfig] = useState({
     key: null,
     direction: 'asc'
   });
   const [activeFilter, setActiveFilter] = useState('All');
+
+  useEffect(() => {
+    async function fetchDomains() {
+      try {
+        const response = await fetch('/api/domains');
+        const data = await response.json();
+        if (data.domains) {
+          setDomains(data.domains);
+        }
+      } catch (error) {
+        console.error('Error fetching domains:', error);
+      }
+    }
+    fetchDomains();
+  }, []);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const result = await parseData(selectedDomain);
+        if (result.error === 'Not authenticated') {
+          router.push('/login');
+          return;
+        }
+        setData(result);
+
+        if (selectedDomain) {
+          const comparisonRes = await fetch(`/api/mongo-issues/compare?domain=${encodeURIComponent(selectedDomain)}`);
+          const comparisonData = await comparisonRes.json();
+          if (comparisonData.success) {
+            setComparison(comparisonData.data);
+          }
+        }
+
+        setIsLoading(false);
+      } catch (error) {
+        console.error('Failed to load data:', error);
+        if (error.message.includes('authentication')) {
+          router.push('/login');
+        }
+      }
+    }
+    loadData();
+  }, [router, selectedDomain]);
+
+  const handleDomainChange = (e) => {
+    const newDomain = e.target.value;
+    setSelectedDomain(newDomain);
+    router.push(`/mongo?domain=${encodeURIComponent(newDomain)}`);
+  };
 
   // Sorting function
   const sortIssues = (issues, key, direction) => {
@@ -152,32 +204,12 @@ export default function Dashboard({ domain, scanDate }) {
     return issues.filter(issue => getIssueGroup(issue['Issue Name']) === activeFilter);
   };
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        const result = await parseData();
-        if (result.error === 'Not authenticated') {
-          router.push('/login');
-          return;
-        }
-        setData(result);
-
-        const comparisonRes = await fetch('/api/mongo-issues/compare');
-        const comparisonData = await comparisonRes.json();
-        if (comparisonData.success) {
-          setComparison(comparisonData.data);
-        }
-
-        setIsLoading(false);
-      } catch (error) {
-        console.error('Failed to load data:', error);
-        if (error.message.includes('authentication')) {
-          router.push('/login');
-        }
-      }
-    }
-    loadData();
-  }, [router]);
+  const getScoreColor = (score) => {
+    if (score >= 90) return 'text-green-600';
+    if (score >= 70) return 'text-yellow-600';
+    if (score >= 50) return 'text-orange-600';
+    return 'text-red-600';
+  };
 
   if (isLoading) {
     return (
@@ -189,21 +221,34 @@ export default function Dashboard({ domain, scanDate }) {
     );
   }
 
-  const getScoreColor = (score) => {
-    if (score >= 90) return 'text-green-600';
-    if (score >= 70) return 'text-yellow-600';
-    if (score >= 50) return 'text-orange-600';
-    return 'text-red-600';
-  };
-
   return (
     <DashboardLayout>
       <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col sm:flex-row justify-between items-baseline mb-8">
-            <h1 className="text-3xl font-bold text-gray-900">
-              SEO Dashboard - {domain}
-            </h1>
+          <div className="flex flex-col sm:flex-row justify-between items-center mb-8">
+            <div className="flex-1">
+              <h1 className="text-3xl font-bold text-gray-900 mb-4">
+                SEO Dashboard
+              </h1>
+              <div className="w-full max-w-xs">
+                <label htmlFor="domain-select" className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Domain
+                </label>
+                <select
+                  id="domain-select"
+                  value={selectedDomain}
+                  onChange={handleDomainChange}
+                  className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm rounded-md"
+                >
+                  <option value="">Select a domain...</option>
+                  {domains.map((domain) => (
+                    <option key={domain} value={domain}>
+                      {domain}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
             <p className="text-gray-500 mt-2 sm:mt-0">
               Last scan: {scanDate}
             </p>

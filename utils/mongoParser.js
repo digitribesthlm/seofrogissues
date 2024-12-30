@@ -1,6 +1,6 @@
-export async function parseData() {
+export async function parseData(domain) {
   try {
-    const res = await fetch('/api/mongo-issues');
+    const res = await fetch(`/api/mongo-issues${domain ? `?domain=${encodeURIComponent(domain)}` : ''}`);
     const data = await res.json();
 
     if (!data.success) {
@@ -19,7 +19,8 @@ export async function parseData() {
       metadata: {
         totalIssues: data.metadata.totalIssues || 0,
         totalAffectedUrls: data.metadata.totalUrls || 0,
-        issuesByType: data.metadata.urlsByIssueType || {}
+        issuesByType: data.metadata.urlsByIssueType || {},
+        domain: domain || data.metadata.domain
       }
     };
   } catch (error) {

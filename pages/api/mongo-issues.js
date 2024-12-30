@@ -9,18 +9,38 @@ export default async function handler(req, res) {
     }
 
     const { db } = await connectToDatabase();
+    const { domain } = req.query;
+
+    // Build query
+    const query = { clientId: auth.clientId };
+    if (domain) {
+      query.domain_name = domain;
+    }
 
     // Get all reports and sort by date
     const allReports = await db.collection('frog_seoReports')
-      .find({ clientId: auth.clientId })
+      .find(query)
       .toArray();
+
+    if (allReports.length === 0) {
+      return res.status(404).json({
+        error: 'No reports found',
+        success: false,
+        data: [],
+        metadata: {
+          totalIssues: 0,
+          issuesByType: {},
+          totalAffectedUrls: 0
+        }
+      });
+    }
 
     // Sort to get the newest report
     const sortedReports = allReports.sort((a, b) => 
       new Date(b.scan_date) - new Date(a.scan_date)
     );
 
-    const latestReport = sortedReports[0];  // Get Dec 8 report
+    const latestReport = sortedReports[0];
 
     console.log('Using report from:', new Date(latestReport.scan_date).toISOString());
 
@@ -44,4 +64,4 @@ export default async function handler(req, res) {
       }
     });
   }
-} 
+}
