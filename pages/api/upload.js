@@ -9,6 +9,12 @@ export const config = {
   },
 };
 
+const cleanValue = (value) => {
+  if (typeof value !== 'string') return value;
+  // Remove quotes and trim whitespace
+  return value.replace(/^["'](.+)["']$/, '$1').trim();
+};
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
@@ -21,31 +27,36 @@ export default async function handler(req, res) {
     }
 
     const { db } = await connectToDatabase();
-    const { domain } = req.body;  // Extract domain from form data
+    const { domain } = req.body;
     const records = Array.isArray(req.body.records) ? req.body.records : JSON.parse(req.body.records);
+
+    // Clean the records
+    const cleanedRecords = records.map(record => ({
+      issueName: cleanValue(record['Issue Name']),
+      issueType: cleanValue(record['Issue Type']),
+      issuePriority: cleanValue(record['Issue Priority']),
+      urls: cleanValue(record['URLs']),
+      percentageOfTotal: cleanValue(record['% of Total']?.replace('%', '')),
+      description: cleanValue(record['Description'] || ''),
+      howToFix: cleanValue(record['How To Fix'] || '')
+    }));
 
     // Create SEO report document
     const seoReport = {
       clientId: auth.clientId,
-      domain_name: domain || 'unknown',  // Use the domain from form data
+      domain_name: domain || 'unknown',
       scan_date: new Date(),
-      all_issues: records.map(record => ({
-        issueName: record['Issue Name'],
-        issueType: record['Issue Type'],
-        issuePriority: record['Issue Priority'],
-        urls: record['URLs'],
-        percentageOfTotal: record['% of Total']
-      })),
+      all_issues: cleanedRecords,
       metadata: {
-        totalIssues: records.length,
+        totalIssues: cleanedRecords.length,
         generatedAt: new Date().toISOString().split('T')[0],
-        totalUrls: records.reduce((sum, record) => {
-          const urls = record['URLs'] || '0';
+        totalUrls: cleanedRecords.reduce((sum, record) => {
+          const urls = record.urls || '0';
           return sum + parseInt(urls.replace(/[^0-9]/g, '') || 0);
         }, 0),
-        urlsByIssueType: records.reduce((acc, record) => {
-          const type = record['Issue Type'];
-          const urls = record['URLs'] || '0';
+        urlsByIssueType: cleanedRecords.reduce((acc, record) => {
+          const type = record.issueType;
+          const urls = record.urls || '0';
           acc[type] = (acc[type] || 0) + parseInt(urls.replace(/[^0-9]/g, '') || 0);
           return acc;
         }, {})
@@ -57,13 +68,13 @@ export default async function handler(req, res) {
 
     return res.status(200).json({ 
       success: true,
-      message: `Successfully uploaded SEO report with ${records.length} issues`
+      message: `Successfully uploaded SEO report with ${cleanedRecords.length} issues`
     });
   } catch (error) {
     console.error('Upload error:', error);
     return res.status(500).json({ 
-      error: 'Failed to upload file',
+      error: 'Failed to process upload',
       details: error.message
     });
   }
-} 
+}
