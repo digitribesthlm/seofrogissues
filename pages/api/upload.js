@@ -27,34 +27,50 @@ export default async function handler(req, res) {
     }
 
     const { db } = await connectToDatabase();
-    const { domain } = req.body;
-    const records = Array.isArray(req.body.records) ? req.body.records : JSON.parse(req.body.records);
+    const { records, domain } = req.body;
+    const parsedRecords = Array.isArray(records) ? records : JSON.parse(records);
 
-    // Clean the records
-    const cleanedRecords = records.map(record => ({
-      issueName: cleanValue(record['Issue Name']),
-      issueType: cleanValue(record['Issue Type']),
-      issuePriority: cleanValue(record['Issue Priority']),
-      urls: cleanValue(record['URLs']),
-      percentageOfTotal: cleanValue(record['% of Total']?.replace('%', '')),
-      description: cleanValue(record['Description'] || ''),
-      howToFix: cleanValue(record['How To Fix'] || '')
-    }));
+    // First, get all issue templates
+    const issueTemplates = await db.collection('frog_issueTemplates')
+      .find({})
+      .toArray();
+
+    // Create a map for quick lookup
+    const templateMap = new Map(
+      issueTemplates.map(template => [template.issueName, template])
+    );
+
+    // Process records and enrich with template data
+    const enrichedRecords = parsedRecords.map(record => {
+      const template = templateMap.get(record['Issue Name']);
+      return {
+        issueName: record['Issue Name'],
+        issueType: record['Issue Type'],
+        issuePriority: record['Issue Priority'],
+        urls: record['URLs'],
+        percentageOfTotal: record['% of Total'],
+        // Add description and howToFix if available in template
+        ...(template && {
+          description: template.description,
+          howToFix: template.howToFix
+        })
+      };
+    });
 
     // Create SEO report document
     const seoReport = {
       clientId: auth.clientId,
-      domain_name: domain || 'unknown',
+      domain_name: domain,
       scan_date: new Date(),
-      all_issues: cleanedRecords,
+      all_issues: enrichedRecords,
       metadata: {
-        totalIssues: cleanedRecords.length,
+        totalIssues: enrichedRecords.length,
         generatedAt: new Date().toISOString().split('T')[0],
-        totalUrls: cleanedRecords.reduce((sum, record) => {
+        totalUrls: enrichedRecords.reduce((sum, record) => {
           const urls = record.urls || '0';
           return sum + parseInt(urls.replace(/[^0-9]/g, '') || 0);
         }, 0),
-        urlsByIssueType: cleanedRecords.reduce((acc, record) => {
+        urlsByIssueType: enrichedRecords.reduce((acc, record) => {
           const type = record.issueType;
           const urls = record.urls || '0';
           acc[type] = (acc[type] || 0) + parseInt(urls.replace(/[^0-9]/g, '') || 0);
@@ -66,14 +82,27 @@ export default async function handler(req, res) {
     // Save to MongoDB
     await db.collection('frog_seoReports').insertOne(seoReport);
 
+    // Update issue templates with any new issues
+    for (const record of enrichedRecords) {
+      if (!templateMap.has(record.issueName)) {
+        await db.collection('frog_issueTemplates').insertOne({
+          issueName: record.issueName,
+          issueType: record.issueType,
+          issuePriority: record.issuePriority,
+          description: record.description || '',
+          howToFix: record.howToFix || ''
+        });
+      }
+    }
+
     return res.status(200).json({ 
       success: true,
-      message: `Successfully uploaded SEO report with ${cleanedRecords.length} issues`
+      message: `Successfully uploaded SEO report for ${domain} with ${enrichedRecords.length} issues`
     });
   } catch (error) {
     console.error('Upload error:', error);
     return res.status(500).json({ 
-      error: 'Failed to process upload',
+      error: 'Failed to upload file',
       details: error.message
     });
   }
