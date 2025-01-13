@@ -6,12 +6,19 @@ import { useRouter } from 'next/router';
 import DashboardLayout from '../components/DashboardLayout';
 import { verifyAuth } from '../utils/auth';
 import ComparisonMetrics from '../components/ComparisonMetrics';
+import IssuePopup from '../components/IssuePopup';
 
 const IssueRow = ({ issue, onClick, showGroup, comparison }) => {
   const seoScore = calculateSEOScore(issue);
   const issueChange = comparison?.issueChanges.find(
     change => change.issueName === issue['Issue Name']
   );
+
+  const handleClick = (e) => {
+    e.preventDefault();
+    console.log('Issue clicked:', issue['Issue Name']);
+    onClick(issue);
+  };
 
   // Determine if trend should be reversed based on issue type
   const getTrendDisplay = (issueChange) => {
@@ -35,14 +42,17 @@ const IssueRow = ({ issue, onClick, showGroup, comparison }) => {
   const trendDisplay = getTrendDisplay(issueChange);
 
   return (
-    <tr onClick={onClick} className="hover:bg-gray-50 cursor-pointer">
+    <tr onClick={handleClick} className="hover:bg-gray-50 cursor-pointer">
       {showGroup && (
         <td className="px-6 py-4 text-sm text-gray-500">
           {getIssueGroup(issue['Issue Name'])}
         </td>
       )}
       <td className="px-6 py-4">
-        <div className="text-sm font-medium text-gray-900">
+        <div 
+          onClick={handleClick}
+          className="text-sm font-medium text-blue-600 hover:text-blue-800 cursor-pointer hover:underline"
+        >
           {issue['Issue Name']}
         </div>
       </td>
@@ -95,6 +105,8 @@ export default function Dashboard({ domain, scanDate }) {
     direction: 'asc'
   });
   const [activeFilter, setActiveFilter] = useState('All');
+  const [issueTemplate, setIssueTemplate] = useState(null);
+  const [apiError, setApiError] = useState(null);
 
   useEffect(() => {
     async function fetchDomains() {
@@ -144,6 +156,55 @@ export default function Dashboard({ domain, scanDate }) {
     const newDomain = e.target.value;
     setSelectedDomain(newDomain);
     router.push(`/mongo?domain=${encodeURIComponent(newDomain)}`);
+  };
+
+  const fetchIssueTemplate = async (issueName) => {
+    try {
+      console.log('Fetching template for:', issueName);
+      setApiError(null);
+      const response = await fetch(`/api/issueTemplate?issueName=${encodeURIComponent(issueName)}`);
+      console.log('API Response:', response.status);
+      const data = await response.json();
+      console.log('API Data:', data);
+      
+      if (!response.ok) {
+        console.error('API Error:', data);
+        setApiError(data.message || 'Failed to fetch issue template');
+        return;
+      }
+      
+      console.log('Template received:', data);
+      setIssueTemplate(data);
+    } catch (err) {
+      console.error('Error fetching issue template:', err);
+      setApiError(err.message || 'Failed to fetch issue template');
+    }
+  };
+
+  const handleIssueClick = async (issue) => {
+    console.log('Issue clicked:', issue);
+    try {
+      const response = await fetch(`/api/mongo-issues?domain=${encodeURIComponent(selectedDomain)}`);
+      const data = await response.json();
+      
+      if (data.success) {
+        const enrichedIssue = data.data.find(i => i.issueName === issue['Issue Name']);
+        if (enrichedIssue) {
+          setIssueTemplate({
+            ...issue,
+            description: enrichedIssue.description,
+            howToFix: enrichedIssue.howToFix
+          });
+        } else {
+          setIssueTemplate(issue);
+        }
+      } else {
+        setIssueTemplate(issue);
+      }
+    } catch (error) {
+      console.error('Error fetching detailed issue info:', error);
+      setIssueTemplate(issue);
+    }
   };
 
   // Sorting function
@@ -224,6 +285,30 @@ export default function Dashboard({ domain, scanDate }) {
   return (
     <DashboardLayout>
       <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+        {apiError && (
+          <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+            <strong className="font-bold">Error: </strong>
+            <span className="block sm:inline">{apiError}</span>
+            <button 
+              onClick={() => setApiError(null)}
+              className="absolute top-0 bottom-0 right-0 px-4 py-3"
+            >
+              <svg className="fill-current h-6 w-6 text-red-500" role="button" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                <title>Close</title>
+                <path d="M14.348 14.849a1.2 1.2 0 0 1-1.697 0L10 11.819l-2.651 3.029a1.2 1.2 0 1 1-1.697-1.697l2.758-3.15-2.759-3.152a1.2 1.2 0 1 1 1.697-1.697L10 8.183l2.651-3.031a1.2 1.2 0 1 1 1.697 1.697l-2.758 3.152 2.758 3.15a1.2 1.2 0 0 1 0 1.698z"/>
+              </svg>
+            </button>
+          </div>
+        )}
+        {issueTemplate && (
+          <IssuePopup
+            issue={issueTemplate}
+            onClose={() => {
+              setIssueTemplate(null);
+              setApiError(null);
+            }}
+          />
+        )}
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col sm:flex-row justify-between items-center mb-8">
             <div className="flex-1">
@@ -334,7 +419,7 @@ export default function Dashboard({ domain, scanDate }) {
                   <IssueRow 
                     key={index} 
                     issue={issue} 
-                    onClick={() => setSelectedIssue(issue)}
+                    onClick={handleIssueClick}
                     showGroup={true}
                     comparison={comparison}
                   />
@@ -345,45 +430,36 @@ export default function Dashboard({ domain, scanDate }) {
 
           {/* Issue Details Modal */}
           {selectedIssue && (
-            <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
-              <div className="bg-white rounded-lg max-w-2xl w-full p-6">
-                <div className="flex justify-between items-start">
-                  <h3 className="text-lg font-medium text-gray-900">{selectedIssue['Issue Name']}</h3>
-                  <button
+            <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full">
+              <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-medium">{selectedIssue.name}</h3>
+                  <button 
                     onClick={() => setSelectedIssue(null)}
-                    className="text-gray-400 hover:text-gray-500"
+                    className="text-gray-500 hover:text-gray-700"
                   >
-                    <span className="sr-only">Close</span>
-                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
+                    ×
                   </button>
                 </div>
-                <div className="mt-4 space-y-4">
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-900">Issue Details</h4>
-                    <div className="mt-2 grid grid-cols-2 gap-4 text-sm text-gray-500">
-                      <div>
-                        <span className="font-medium">Type:</span> {selectedIssue['Issue Type']}
-                      </div>
-                      <div>
-                        <span className="font-medium">Priority:</span> {selectedIssue['Issue Priority']}
-                      </div>
-                      <div>
-                        <span className="font-medium">URLs Affected:</span> {selectedIssue['URLs']}
-                      </div>
-                      <div>
-                        <span className="font-medium">% of Total:</span> {selectedIssue['% of Total']}%
-                      </div>
-                    </div>
+                
+                <div className="mt-4">
+                  <div className="flex justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-500">Type:</span>
+                    <span className="text-sm">{selectedIssue.issueType}</span>
                   </div>
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-900">Description</h4>
-                    <p className="mt-2 text-sm text-gray-500">{selectedIssue['Description']}</p>
+                  <div className="flex justify-between mb-2">
+                    <span className="text-sm font-medium text-gray-500">Priority:</span>
+                    <span className="text-sm">{selectedIssue.issuePriority}</span>
                   </div>
-                  <div>
-                    <h4 className="text-sm font-medium text-gray-900">How to Fix</h4>
-                    <p className="mt-2 text-sm text-gray-500">{selectedIssue['How To Fix']}</p>
+                  
+                  <div className="mt-4">
+                    <h4 className="text-sm font-medium text-gray-500 mb-1">Description</h4>
+                    <p className="text-sm text-gray-700">{selectedIssue.description}</p>
+                  </div>
+                  
+                  <div className="mt-4">
+                    <h4 className="text-sm font-medium text-gray-500 mb-1">How to Fix</h4>
+                    <p className="text-sm text-gray-700">{selectedIssue.howToFix}</p>
                   </div>
                 </div>
               </div>

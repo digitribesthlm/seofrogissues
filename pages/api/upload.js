@@ -35,32 +35,31 @@ export default async function handler(req, res) {
       .find({})
       .toArray();
 
-    // Create a map for quick lookup
+    // Create a map for quick lookup, using cleaned issue names
     const templateMap = new Map(
-      issueTemplates.map(template => [template.issueName, template])
+      issueTemplates.map(template => [cleanValue(template.issueName), template])
     );
 
     // Process records and enrich with template data
     const enrichedRecords = parsedRecords.map(record => {
-      const template = templateMap.get(record['Issue Name']);
+      const cleanedIssueName = cleanValue(record['Issue Name']);
+      
       return {
-        issueName: record['Issue Name'],
-        issueType: record['Issue Type'],
-        issuePriority: record['Issue Priority'],
+        issueName: cleanedIssueName,
+        issueType: cleanValue(record['Issue Type']),
+        issuePriority: cleanValue(record['Issue Priority']),
         urls: record['URLs'],
         percentageOfTotal: record['% of Total'],
-        // Add description and howToFix if available in template
-        ...(template && {
-          description: template.description,
-          howToFix: template.howToFix
-        })
+        description: record['Description'],
+        howToFix: record['How To Fix'],
+        helpUrl: record['Help URL']
       };
     });
 
     // Create SEO report document
     const seoReport = {
       clientId: auth.clientId,
-      domain_name: domain,
+      domain_name: cleanValue(domain),
       scan_date: new Date(),
       all_issues: enrichedRecords,
       metadata: {
@@ -84,20 +83,28 @@ export default async function handler(req, res) {
 
     // Update issue templates with any new issues
     for (const record of enrichedRecords) {
-      if (!templateMap.has(record.issueName)) {
-        await db.collection('frog_issueTemplates').insertOne({
-          issueName: record.issueName,
-          issueType: record.issueType,
-          issuePriority: record.issuePriority,
-          description: record.description || '',
-          howToFix: record.howToFix || ''
-        });
-      }
+      const cleanedIssueName = cleanValue(record.issueName);
+
+      // Always update the template to ensure we have the latest data
+      await db.collection('frog_issueTemplates').updateOne(
+        { issueName: cleanedIssueName },
+        { 
+          $set: {
+            issueName: cleanedIssueName,
+            issueType: cleanValue(record.issueType),
+            issuePriority: cleanValue(record.issuePriority),
+            description: record.description,
+            howToFix: record.howToFix,
+            helpUrl: record.helpUrl
+          }
+        },
+        { upsert: true } // Create if doesn't exist
+      );
     }
 
     return res.status(200).json({ 
       success: true,
-      message: `Successfully uploaded SEO report for ${domain} with ${enrichedRecords.length} issues`
+      message: `Successfully uploaded SEO report for ${cleanValue(domain)} with ${enrichedRecords.length} issues`
     });
   } catch (error) {
     console.error('Upload error:', error);

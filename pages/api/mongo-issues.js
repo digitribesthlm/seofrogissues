@@ -1,10 +1,4 @@
 import { connectToDatabase } from '../../utils/mongodb';
-import { verifyAuth } from '../../utils/auth';
-
-const cleanValue = (value) => {
-  if (typeof value !== 'string') return value;
-  return value.replace(/^["'](.+)["']$/, '$1').trim();
-};
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -12,75 +6,78 @@ export default async function handler(req, res) {
   }
 
   try {
-    const auth = await verifyAuth(req);
-    if (!auth.isAuthenticated) {
-      return res.status(401).json({ error: 'Not authenticated' });
-    }
-
-    const { domain } = req.query;
     const { db } = await connectToDatabase();
+    const { domain } = req.query;
 
-    // Build query
-    const query = { clientId: auth.clientId };
-    if (domain) {
-      query.domain_name = domain;
-    }
+    // First, let's log what we're looking for
+    console.log('Looking for domain:', domain);
 
-    // Get all reports for the domain, sorted by date
-    const allReports = await db.collection('frog_seoReports')
-      .find(query)
-      .sort({ scan_date: -1 })
-      .toArray();
+    const report = await db.collection('frog_seoReports')
+      .findOne(
+        { domain_name: domain },
+        { sort: { scan_date: -1 } }
+      );
 
-    if (allReports.length === 0) {
-      return res.status(404).json({ 
-        error: 'No reports found',
-        success: false,
+    if (!report) {
+      return res.status(200).json({ 
+        success: true,
         data: [],
         metadata: {
           totalIssues: 0,
-          issuesByType: {},
-          totalAffectedUrls: 0
+          totalUrls: 0,
+          urlsByIssueType: {},
+          domain: domain
         }
       });
     }
 
-    const latestReport = allReports[0];
+    // Get all issue templates and log them
+    const templates = await db.collection('frog_issueTemplates')
+      .find({})
+      .toArray();
+    
+    console.log('Found templates:', templates.map(t => t.issueName));
 
-    // Clean the data before sending
-    const cleanedIssues = latestReport.all_issues.map(issue => ({
-      issueName: cleanValue(issue.issueName),
-      issueType: cleanValue(issue.issueType),
-      issuePriority: cleanValue(issue.issuePriority),
-      urls: cleanValue(issue.urls),
-      percentageOfTotal: cleanValue(issue.percentageOfTotal),
-      description: cleanValue(issue.description || ''),
-      howToFix: cleanValue(issue.howToFix || '')
-    }));
+    // Create a map of templates for quick lookup, removing quotes from keys
+    const templateMap = new Map(
+      templates.map(template => [
+        template.issueName.replace(/^"|"$/g, ''), // Remove surrounding quotes
+        template
+      ])
+    );
 
-    return res.status(200).json({ 
+    // Enrich the issues with template data and log matches
+    const enrichedIssues = report.all_issues.map(issue => {
+      const template = templateMap.get(issue.issueName);
+      console.log('Matching:', issue.issueName, 'with template:', template?.issueName);
+      
+      return {
+        issueName: issue.issueName,
+        issueType: issue.issueType,
+        issuePriority: issue.issuePriority,
+        urls: issue.urls,
+        percentageOfTotal: issue.percentageOfTotal,
+        description: template?.description?.replace(/^"|"$/g, '') || 'No description available',
+        howToFix: template?.howToFix?.replace(/^"|"$/g, '') || 'No fix instructions available'
+      };
+    });
+
+    // Return the enriched data with metadata
+    return res.status(200).json({
       success: true,
-      data: cleanedIssues,
+      data: enrichedIssues,
       metadata: {
-        ...latestReport.metadata,
-        issuesByType: Object.entries(latestReport.metadata.urlsByIssueType || {}).reduce((acc, [key, value]) => {
-          acc[cleanValue(key)] = value;
-          return acc;
-        }, {})
-      },
-      domain: latestReport.domain_name
+        totalIssues: report.metadata.totalIssues,
+        totalUrls: report.metadata.totalUrls,
+        urlsByIssueType: report.metadata.urlsByIssueType,
+        domain: report.domain_name
+      }
     });
   } catch (error) {
-    console.error('API Error:', error);
-    return res.status(500).json({ 
-      error: 'Failed to load issues data',
+    console.error('Error fetching issues:', error);
+    return res.status(200).json({ 
       success: false,
-      data: [],
-      metadata: {
-        totalIssues: 0,
-        issuesByType: {},
-        totalAffectedUrls: 0
-      }
+      error: 'Failed to fetch issues'
     });
   }
 }

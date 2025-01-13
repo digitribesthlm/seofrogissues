@@ -4,19 +4,28 @@ import { calculateSEOScore, groupIssues, getIssueGroup, ISSUE_GROUPS, calculateT
 import IssueCharts from '../components/IssueCharts';
 import { useRouter } from 'next/router';
 import DashboardLayout from '../components/DashboardLayout';
+import IssuePopup from '../components/IssuePopup';
 
 const IssueRow = ({ issue, onClick, showGroup }) => {
   const seoScore = calculateSEOScore(issue);
   
+  const handleClick = (e) => {
+    console.log('Issue clicked:', issue['Issue Name']);
+    onClick(issue);
+  };
+  
   return (
-    <tr onClick={onClick} className="hover:bg-gray-50 cursor-pointer">
+    <tr className="hover:bg-gray-50">
       {showGroup && (
         <td className="px-6 py-4 text-sm text-gray-500">
           {getIssueGroup(issue['Issue Name'])}
         </td>
       )}
       <td className="px-6 py-4">
-        <div className="text-sm font-medium text-gray-900">
+        <div 
+          onClick={handleClick}
+          className="text-sm font-medium text-blue-600 hover:text-blue-800 cursor-pointer hover:underline"
+        >
           {issue['Issue Name']}
         </div>
       </td>
@@ -81,10 +90,38 @@ export default function Dashboard({ domain }) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [apiError, setApiError] = useState(null);
   const [data, setData] = useState([]);
   const [metadata, setMetadata] = useState(null);
   const [selectedIssue, setSelectedIssue] = useState(null);
   const [groupedData, setGroupedData] = useState({});
+  const [issueTemplate, setIssueTemplate] = useState(null);
+
+  const fetchIssueTemplate = async (issueName) => {
+    try {
+      console.log('Fetching template for:', issueName);
+      setApiError(null);
+      const response = await fetch(`/api/issueTemplate?issueName=${encodeURIComponent(issueName)}`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        console.error('API Error:', data);
+        setApiError(data.message || 'Failed to fetch issue template');
+        return;
+      }
+      
+      console.log('Template received:', data);
+      setIssueTemplate(data);
+    } catch (err) {
+      console.error('Error fetching issue template:', err);
+      setApiError(err.message || 'Failed to fetch issue template');
+    }
+  };
+
+  const handleIssueClick = async (issue) => {
+    console.log('handleIssueClick called with:', issue);
+    await fetchIssueTemplate(issue['Issue Name']);
+  };
 
   useEffect(() => {
     async function loadData() {
@@ -132,6 +169,21 @@ export default function Dashboard({ domain }) {
   return (
     <DashboardLayout>
       <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+        {apiError && (
+          <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+            <strong className="font-bold">Error: </strong>
+            <span className="block sm:inline">{apiError}</span>
+          </div>
+        )}
+        {issueTemplate && (
+          <IssuePopup
+            issue={issueTemplate}
+            onClose={() => {
+              setIssueTemplate(null);
+              setApiError(null);
+            }}
+          />
+        )}
         <div className="max-w-7xl mx-auto">
           <h1 className="text-3xl font-bold text-gray-900 mb-8">
             SEO Issues Dashboard - {domain}
@@ -241,7 +293,7 @@ export default function Dashboard({ domain }) {
                   <IssueRow 
                     key={index} 
                     issue={issue} 
-                    onClick={() => setSelectedIssue(issue)}
+                    onClick={() => handleIssueClick(issue)}
                     showGroup={true}
                   />
                 ))}
